@@ -1,0 +1,47 @@
+# ==============================
+# SECRETS — NEVER COMMIT THESE
+# ==============================
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env
+frontend/admin/.env
+frontend/admin/.env.local
+frontend/admin/.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+*.sqlite3
+
+# Node / Vite
+node_modules/
+frontend/admin/dist/
+.vite/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Supabase local (keep migrations, ignore local config)
+.supabase/
+
+# IDE
+.idea/
+.vscode/settings.json
+*.suo
+*.user
+*.swp
