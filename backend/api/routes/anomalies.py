@@ -1,25 +1,20 @@
-"""
-Anomaly Detection & Resolution API
-"""
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from flask import Blueprint, jsonify, request, abort
 from config import supabase
 from models.schemas import AnomalyResolve
 
-router = APIRouter(prefix="/api/anomalies", tags=["Anomalies"])
+anomalies_bp = Blueprint("anomalies", __name__, url_prefix="/api/anomalies")
 
+@anomalies_bp.route("/<company_id>", methods=["GET"])
+def list_anomalies(company_id):
+    resolved = request.args.get('resolved', 'false').lower() == 'true'
+    limit = int(request.args.get('limit', 50))
+    res = supabase.table("anomalies").select("*, tanks(name, fuel_type)").eq("company_id", company_id).eq("is_resolved", resolved).order("detected_at", desc=True).limit(limit).execute()
+    return jsonify(res.data)
 
-@router.get("/{company_id}")
-async def list_anomalies(company_id: str, resolved: bool = False, limit: int = 50):
-    res = supabase.table("anomalies").select(
-        "*, tanks(name, fuel_type)"
-    ).eq("company_id", company_id).eq("is_resolved", resolved)\
-     .order("detected_at", desc=True).limit(limit).execute()
-    return res.data
-
-
-@router.post("/resolve")
-async def resolve_anomaly(payload: AnomalyResolve):
+@anomalies_bp.route("/resolve", methods=["POST"])
+def resolve_anomaly():
+    payload = AnomalyResolve(**request.json)
     res = supabase.table("anomalies").update({
         "is_resolved": True,
         "resolution_notes": payload.resolution_notes,
@@ -27,39 +22,23 @@ async def resolve_anomaly(payload: AnomalyResolve):
         "resolved_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", payload.anomaly_id).execute()
     if not res.data:
-        raise HTTPException(404, "Anomaly not found")
-    return {"status": "resolved", "anomaly_id": payload.anomaly_id}
+        abort(404, description="Anomaly not found")
+    return jsonify({"status": "resolved", "anomaly_id": payload.anomaly_id})
 
-
-@router.post("/run-reconciliation/{company_id}")
-async def run_reconciliation(company_id: str):
-    """
-    Triple-check reconciliation engine:
-    Compares latest IoT delta vs recorded transactions over past 24h.
-    """
+@anomalies_bp.route("/run-reconciliation/<company_id>", methods=["POST"])
+def run_reconciliation(company_id):
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-
     tanks = supabase.table("tanks").select("*").eq("company_id", company_id).eq("is_active", True).execute().data
     results = []
 
     for tank in tanks:
         tank_id = tank["id"]
-
-        # Get IoT readings in window
-        readings = supabase.table("tank_readings").select("level_liters, recorded_at")\
-            .eq("tank_id", tank_id).gte("recorded_at", cutoff)\
-            .order("recorded_at").execute().data
-
+        readings = supabase.table("tank_readings").select("level_liters, recorded_at").eq("tank_id", tank_id).gte("recorded_at", cutoff).order("recorded_at").execute().data
         if len(readings) < 2:
             continue
-
         iot_delta = float(readings[0]["level_liters"]) - float(readings[-1]["level_liters"])
-
-        # Get transactions in window
-        txns = supabase.table("transactions").select("liters_dispensed")\
-            .eq("tank_id", tank_id).gte("transaction_at", cutoff).execute().data
-
+        txns = supabase.table("transactions").select("liters_dispensed").eq("tank_id", tank_id).gte("transaction_at", cutoff).execute().data
         transaction_total = sum(float(t["liters_dispensed"]) for t in txns)
 
         variance = iot_delta - transaction_total
@@ -67,7 +46,6 @@ async def run_reconciliation(company_id: str):
 
         if variance > 100:
             status = "discrepancy"
-            # Create anomaly if significant loss
             from api.routes.iot import _create_anomaly
             _create_anomaly(
                 company_id, tank_id,
@@ -87,4 +65,4 @@ async def run_reconciliation(company_id: str):
             "status": status,
         })
 
-    return {"company_id": company_id, "reconciliation_results": results, "ran_at": datetime.now(timezone.utc).isoformat()}
+    return jsonify({"company_id": company_id, "reconciliation_results": results, "ran_at": datetime.now(timezone.utc).isoformat()})

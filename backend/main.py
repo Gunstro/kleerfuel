@@ -1,32 +1,26 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from flask import Flask, jsonify
+from flask_cors import CORS
 from config import CORS_ORIGINS
-from api.routes import iot, tanks, anomalies
 
-app = FastAPI(
-    title="kleerFUEL API",
-    description="Total Fuel Visibility. Zero Shrinkage.",
-    version="1.0.0",
-)
+from api.routes.iot import iot_bp
+from api.routes.tanks import tanks_bp
+from api.routes.anomalies import anomalies_bp
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = Flask(__name__)
+# Configure CORS
+CORS(app, resources={r"/*": {"origins": CORS_ORIGINS}}, supports_credentials=True)
 
-app.include_router(iot.router)
-app.include_router(tanks.router)
-app.include_router(anomalies.router)
+app.register_blueprint(iot_bp)
+app.register_blueprint(tanks_bp)
+app.register_blueprint(anomalies_bp)
 
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "service": "kleerFUEL API", "version": "1.0.0"})
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "service": "kleerFUEL API", "version": "1.0.0"}
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"message": "kleerFUEL API — Total Fuel Visibility. Zero Shrinkage."})
 
-
-@app.get("/")
-async def root():
-    return {"message": "kleerFUEL API — Total Fuel Visibility. Zero Shrinkage."}
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)

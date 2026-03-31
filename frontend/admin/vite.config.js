@@ -12,17 +12,9 @@ export default defineConfig({
     strictPort: false,
   },
 
-  // Production build optimisation
+  // Production build
   build: {
     outDir: 'dist',
-    sourcemap: false,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
-        },
-      },
-    },
+    sourcemap: false
   },
 })
